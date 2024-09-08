@@ -27,41 +27,53 @@ class MedianFilterScene(Scene):
 
     def construct(self):
         self.add_grids()
-        self.add_shifting_square()
 
         # Fade in kernel grid
-        self.play(FadeIn(self.kernel_grid), run_time=0.5)
+        self.play(FadeIn(self.kernel_grid), run_time=0.1)
 
-        # for kernel_pos in range(self.initial_dataset.size):
-        kernel_pos = 0
-        self.shifting_square.move_to(self.kernel_grid.get_cell(4))  # Place on the center of the kernel
+        for kernel_pos in range(self.initial_dataset.size):
+            # Exponentially decrease the length of the animation speeds
+            speed_modifier = np.exp(-kernel_pos / 100)
 
-        # Set the (hidden) fill color of the kernel
-        self.set_kernel_cell_colors(kernel_pos)
+            self.add_shifting_square()
+            self.shifting_square.move_to(self.kernel_grid.get_cell(4))  # Place on the center of the kernel
 
-        # Change color over 2 seconds to fill in the outer-edges of the kernel
-        self.play(AnimationGroup(*[
-            cell.animate.set_fill(opacity=1) for cell in self.kernel_grid.get_cells()
-        ]), run_time=2.0)
+            # Set the (hidden) fill color of the kernel
+            self.set_kernel_cell_colors(kernel_pos)
 
-        # Set the (hidden) shifting square to the median cell color
-        median_color = self.median_grid.get_cell(kernel_pos).get_fill_color()
-        self.shifting_square.set_fill(median_color)
+            # Change color to fill in the outer-edges of the kernel
+            self.play(AnimationGroup(*[
+                cell.animate.set_fill(opacity=1) for cell in self.kernel_grid.get_cells()
+            ]), run_time=0.1 * speed_modifier)
 
-        # Fade the shifting square in
-        self.play(self.shifting_square.animate.set_opacity(1), run_time=1.0)
+            # Set the (hidden) shifting square to the median cell color
+            median_color = self.median_grid.get_cell(kernel_pos).get_fill_color()
+            self.shifting_square.set_fill(median_color)
 
-        self.wait(.2)
+            # Fade the shifting square in
+            self.play(self.shifting_square.animate.set_fill(opacity=1), run_time=0.1 * speed_modifier)
 
-        # Move the shifting square across to the next index
+            # Make the kernel cells transparent
+            self.play(*[cell.animate.set_fill(opacity=0) for cell in self.kernel_grid.get_cells()])
 
-        # 'Recolor' the cell in the median grid by making it non-transparent
+            # Move the shifting square across to the median grid
+            self.play(self.shifting_square.animate.move_to(self.median_grid.get_cell(kernel_pos)).scale(self.CELL_SIZE))
 
-        # Fade out the shifting square
+            # 'Recolor' the cell in the median grid by making it non-transparent
+            self.median_grid.get_cell(kernel_pos).set_fill(median_color, opacity=1)
 
-        # Move the kernel onto the next cell while fading the cell fills
+            # Fade out the shifting square
+            self.play(self.shifting_square.animate.set_opacity(0), run_time=0.1 * speed_modifier)
 
-        self.wait(2)
+            # Delete the shifting square - to be recreated, since fractional scaling makes it decrease in size over time
+            self.remove(self.shifting_square)
+
+            if kernel_pos < self.initial_dataset.size - 1:
+                # Move the kernel grid to the next cell
+                self.play(self.kernel_grid.animate.move_to(self.data_grid.get_cell(kernel_pos + 1)))
+            else:
+                # Fade out the kernel grid
+                self.play(FadeOut(self.kernel_grid), run_time=0.2 * speed_modifier)
 
     def setup_datasets(self):
         # Load the datasets, clip for visibility, and normalise
@@ -82,8 +94,8 @@ class MedianFilterScene(Scene):
 
     def add_grids(self):
         self.data_grid = self.add_grid(self.initial_dataset, LEFT)
-        self.median_grid = self.add_grid(self.convolved_dataset, RIGHT)
-        self.kernel_grid = self.add_grid(self.kernel_dataset).move_to(self.data_grid.get_cell(0))
+        self.median_grid = self.add_grid(np.zeros_like(self.initial_dataset), RIGHT)
+        self.kernel_grid = self.add_grid(self.kernel_dataset).move_to(self.data_grid.get_cell(0)).set_z_index(1)
 
         for cell in self.data_grid.get_cells():
             cell.set_stroke(color=RED, width=1, opacity=.1)
@@ -91,8 +103,12 @@ class MedianFilterScene(Scene):
         for cell in self.median_grid.get_cells():
             cell.set_stroke(color=RED, width=1, opacity=.1)
 
-        for i, cell in enumerate(self.kernel_grid.get_cells()):
+        for cell in self.kernel_grid.get_cells():
             cell.set_stroke(color=RED, width=1, opacity=1)
+
+        self.data_grid.get_border().set_stroke(color=WHITE, opacity=1)
+        self.median_grid.get_border().set_stroke(color=WHITE, opacity=1)
+        self.kernel_grid.get_border().set_stroke(color=WHITE, opacity=1)
 
         self.add(self.kernel_grid)
 
@@ -110,8 +126,9 @@ class MedianFilterScene(Scene):
         self.shifting_square = Square(
             side_length=self.CELL_SIZE * self.KERNEL_SIZE,  # Will cover the whole kernel
             stroke_color=WHITE,  # Matches kernel border
+            stroke_opacity=1,  # Covers kernel border anyway
             fill_opacity=0,  # No fill until animation
-        )
+        ).set_z_index(2).move_to(self.kernel_grid.get_cell(4))
 
         self.add(self.shifting_square)
 
